@@ -1,4 +1,5 @@
 *.lnk
 *.asv
 *.px4log
+*.px4log.mat
 codetest.m

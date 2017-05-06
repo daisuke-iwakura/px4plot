@@ -8,7 +8,7 @@
 %       px4plot('01_02_03.px4log');
 %     => The function plots major data by reading '01_02_03.px4log'.
 %
-%     px4plot('01_02_03.px4log', '|20s');
+%       px4plot('01_02_03.px4log', '|20s');
 %     => The function plots major data and draws a vertical line at the
 %     point t=20 second from the head of log.
 %
@@ -51,8 +51,12 @@ if exist('arg1', 'var')
     end
 end
 
-log = decode_px4log(filename);
-
+if ~isstruct(filename)
+    log = decode_px4log(filename);
+else
+    log = filename;
+end
+    
 % get mav types 
 MAV_TYPE = mavtypes();
 
@@ -370,6 +374,11 @@ figtool(param, '');
 
 
 end % end of function
+
+
+%function param = parse_args(var
+
+
 
 function figtool(param, label_y)
 xlim(param.x_range);
