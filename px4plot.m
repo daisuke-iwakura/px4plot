@@ -12,6 +12,9 @@
 %     => The function plots major data and draws a vertical line at the
 %     point t=20 second from the head of log.
 %
+%       px4plot('01_02_03.px4log', '|20s', '|30s')
+%     => Multiple vertical line definition allowed.
+%
 %     Copyright (c) 2017, Daisuke Iwakura
 %     All rights reserved.
 
@@ -40,16 +43,10 @@
 % SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function px4plot(filename, arg1)
+function px4plot(filename, varargin)
 close all;
 
-param.line_time = []; 
-
-if exist('arg1', 'var')
-    if length(arg1) >= 1 && arg1(1) == '|' && arg1(end) == 's'
-        param.line_time = str2double(arg1(2:end-1));
-    end
-end
+param = parse_arg(varargin{:});
 
 if ~isstruct(filename)
     log = decode_px4log(filename);
@@ -376,15 +373,27 @@ figtool(param, '');
 end % end of function
 
 
-%function param = parse_args(var
+function param = parse_arg(varargin)
+
+    param.time_marked = [];
+
+    for i = 1 : length(varargin)
+        arg = varargin{i};
+        if ischar(arg) && arg(1) == '|' && arg(end) == 's'
+            % '|XXXs'
+            
+            param.time_marked(end+1) = str2double(arg(2:end-1));
+        end
+    end
+end
 
 
 
 function figtool(param, label_y)
-xlim(param.x_range);
-xlabel('Time [s]');
-ylabel(label_y);
-if ~isempty(param.line_time)
+    xlim(param.x_range);
+    xlabel('Time [s]');
+    ylabel(label_y);
+
     hold on
     lim = get(gca,'ylim');
     % avoid a bug (octave)
@@ -398,8 +407,10 @@ if ~isempty(param.line_time)
         end
     end
     ylim(lim);
-    plot([param.line_time param.line_time], lim, ':k');
-end
+
+    for i = 1 : length(param.time_marked)
+        plot([param.time_marked(i) param.time_marked(i)], lim, ':k');
+    end
 end
 
 
