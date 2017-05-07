@@ -62,9 +62,14 @@ else
     log = filename;
 end
     
-% get mav types 
-MAV_TYPE = mavtypes();
+% Get number of rotors
+nRotors = getNRotors(log);
 
+% Get RC Map
+RC_MAP.Throttle = getLogData(log, '.parm.RC_MAP_THROTTLE');
+RC_MAP.Roll     = getLogData(log, '.parm.RC_MAP_ROLL');
+RC_MAP.Pitch    = getLogData(log, '.parm.RC_MAP_PITCH');
+RC_MAP.Yaw      = getLogData(log, '.parm.RC_MAP_YAW');
 
 % Time
 time = getLogData(log, '.time');
@@ -260,9 +265,16 @@ plot(t_IMU, IMU.AccZ, 'b');
 figtool(param, 'z Acceleration [m/s^2]');
 
 % Magnetic Field
+Mag_Norm = sqrt(IMU.MagX.^2 + IMU.MagY.^2 + IMU.MagZ.^2);
+
 figure('Name', 'Magnetic Field', 'NumberTitle', 'off');
+subplot(2,1,1)
 plot(t_IMU, IMU.MagX, t_IMU, IMU.MagY, t_IMU, IMU.MagZ);
 legend0('X', 'Y', 'Z');
+figtool(param, 'Mag. Field [Gauss]');
+subplot(2,1,2)
+plot(t_IMU, Mag_Norm, 'k');
+legend0('Norm (M_X^2+M_Y^2+M_Z^2)^0.5');
 figtool(param, 'Mag. Field [Gauss]');
 
 % Barometer
@@ -291,17 +303,45 @@ figtool(param, 'Thrust');
 
 % Actuator
 figure('Name', 'Actuator Output', 'NumberTitle', 'off');
-plot(t_Out0, Out0.Out0, t_Out0, Out0.Out1, t_Out0, Out0.Out2, t_Out0, Out0.Out3, ...
-     t_Out0, Out0.Out4, t_Out0, Out0.Out5, t_Out0, Out0.Out6, t_Out0, Out0.Out7);
-legend0('Out0', 'Out1', 'Out2', 'Out3', 'Out4', 'Out5', 'Out6', 'Out7');
+switch nRotors
+    case 4
+        plot(t_Out0, Out0.Out0, t_Out0, Out0.Out1, t_Out0, Out0.Out2, t_Out0, Out0.Out3);
+        legend0('Out0', 'Out1', 'Out2', 'Out3');
+    case 6
+        plot(t_Out0, Out0.Out0, t_Out0, Out0.Out1, t_Out0, Out0.Out2, t_Out0, Out0.Out3, ...
+             t_Out0, Out0.Out4, t_Out0, Out0.Out5);
+        legend0('Out0', 'Out1', 'Out2', 'Out3', 'Out4', 'Out5');
+    otherwise
+        plot(t_Out0, Out0.Out0, t_Out0, Out0.Out1, t_Out0, Out0.Out2, t_Out0, Out0.Out3, ...
+             t_Out0, Out0.Out4, t_Out0, Out0.Out5, t_Out0, Out0.Out6, t_Out0, Out0.Out7);
+        legend0('Out0', 'Out1', 'Out2', 'Out3', 'Out4', 'Out5', 'Out6', 'Out7');
+end
+
 ylim([1000 2000]);
 figtool(param, '');
 
 % RC Input
+Rc(1).Value = RC.C0;
+Rc(2).Value = RC.C1;
+Rc(3).Value = RC.C2;
+Rc(4).Value = RC.C3;
+Rc(5).Value = RC.C4;
+Rc(6).Value = RC.C5;
+Rc(7).Value = RC.C6;
+Rc(8).Value = RC.C7;
+Rc(9).Value = RC.C8;
+Rc(10).Value = RC.C9;
+Rc(11).Value = RC.C10;
+Rc(12).Value = RC.C11;
+args{1} = t_RC; args{2} = Rc(RC_MAP.Roll).Value;
+args{3} = t_RC; args{4} = Rc(RC_MAP.Pitch).Value;
+args{5} = t_RC; args{6} = Rc(RC_MAP.Yaw).Value;
+args{7} = t_RC; args{8} = Rc(RC_MAP.Throttle).Value;
+
 figure('Name', 'RC Input', 'NumberTitle', 'off');
 subplot(3,1,1)
-plot(t_RC, RC.C0, t_RC, RC.C1, t_RC, RC.C2, t_RC, RC.C3);
-legend0('Ch0', 'Ch1', 'Ch2', 'Ch3');
+plot(args{:});
+legend0('Roll', 'Pitch', 'Yaw', 'Throttle');
 figtool(param, '');
 subplot(3,1,2)
 plot(t_RC, RC.C4, t_RC, RC.C5, t_RC, RC.C6, t_RC, RC.C7);
@@ -397,7 +437,6 @@ end % end of function
 
 
 function param = parse_arg(varargin)
-
     param.time_marked  = [];
     param.t_start      = [];
     param.t_start_from = 0;
@@ -482,70 +521,90 @@ end
 
 function i_Found = findindex(t_Src, t_Tgt)
 
-i_Found(1:length(t_Tgt)) = 0;
+    i_Found(1:length(t_Tgt)) = 0;
 
-for k = 1 : length(t_Tgt)
-    if isempty(t_Src)
-        i_Found(k) = 0;
-        return;
-    elseif length(t_Src) == 1
-        i_Found(k) = 1;
-        return;
-    else
-        % binary search
-        i_left  = 1;
-        i_right = length(t_Src);
-        while 1
-            i_mid = fix((i_left + i_right) / 2);
-            if i_mid == i_left
-                % If the target value is placed between two values, rounds up
-                % index.
-                if t_Tgt(k) <= t_Src(i_left) 
-                    i_Found(k) = i_left;
-                else
-                    i_Found(k) = i_left + 1;
+    for k = 1 : length(t_Tgt)
+        if isempty(t_Src)
+            i_Found(k) = 0;
+            return;
+        elseif length(t_Src) == 1
+            i_Found(k) = 1;
+            return;
+        else
+            % binary search
+            i_left  = 1;
+            i_right = length(t_Src);
+            while 1
+                i_mid = fix((i_left + i_right) / 2);
+                if i_mid == i_left
+                    % If the target value is placed between two values, rounds up
+                    % index.
+                    if t_Tgt(k) <= t_Src(i_left) 
+                        i_Found(k) = i_left;
+                    else
+                        i_Found(k) = i_left + 1;
+                    end
+                    break;
                 end
-                break;
-            end
-            if t_Tgt(k) < t_Src(i_mid)
-                i_right = i_mid;
-            else
-                i_left = i_mid;
+                if t_Tgt(k) < t_Src(i_mid)
+                    i_right = i_mid;
+                else
+                    i_left = i_mid;
+                end
             end
         end
     end
 end
 
+
+function n = getNRotors(log)
+    MAV_TYPE = mavtypes();
+    mav_type = getLogData(log, '.parm.MAV_TYPE');
+    
+    if ~isempty(mav_type)
+        switch mav_type
+            case MAV_TYPE.QUADROTOR
+                n = 4;
+            case MAV_TYPE.HEXAROTOR
+                n = 6;
+            case MAV_TYPE.OCTOROTOR
+                n = 8;
+            otherwise
+                n = 8;
+        end
+    else
+        n = 8;
+    end
 end
 
 
 function MAV_TYPE = mavtypes()
-MAV_TYPE.GENERIC            = 0;
-MAV_TYPE.FIXED_WING         = 1;
-MAV_TYPE.QUADROTOR          = 2;
-MAV_TYPE.COAXIAL            = 3;
-MAV_TYPE.HELICOPTER         = 4;
-MAV_TYPE.ANTENNA_TRACKER    = 5;
-MAV_TYPE.GCS                = 6;
-MAV_TYPE.AIRSHIP            = 7;
-MAV_TYPE.FREE_BALLOON       = 8;
-MAV_TYPE.ROCKET             = 9;
-MAV_TYPE.GROUND_ROVER       = 10;
-MAV_TYPE.SURFACE_BOAT       = 11;
-MAV_TYPE.SUBMARINE          = 12;
-MAV_TYPE.HEXAROTOR          = 13;
-MAV_TYPE.OCTOROTOR          = 14;
-MAV_TYPE.TRICOPTER          = 15;
-MAV_TYPE.FLAPPING_WING      = 16;
-MAV_TYPE.KITE               = 17;
-MAV_TYPE.ONBOARD_CONTROLLER = 18;
-MAV_TYPE.VTOL_DUOROTOR      = 19;
-MAV_TYPE.VTOL_QUADROTOR     = 20;
-MAV_TYPE.VTOL_TILTROTOR     = 21;
-MAV_TYPE.VTOL_RESERVED2     = 22;
-MAV_TYPE.VTOL_RESERVED3     = 23;
-MAV_TYPE.VTOL_RESERVED4     = 24;
-MAV_TYPE.VTOL_RESERVED5     = 25;
-MAV_TYPE.GIMBAL             = 26;
-MAV_TYPE.ADSB               = 27;
+    MAV_TYPE.GENERIC            = 0;
+    MAV_TYPE.FIXED_WING         = 1;
+    MAV_TYPE.QUADROTOR          = 2;
+    MAV_TYPE.COAXIAL            = 3;
+    MAV_TYPE.HELICOPTER         = 4;
+    MAV_TYPE.ANTENNA_TRACKER    = 5;
+    MAV_TYPE.GCS                = 6;
+    MAV_TYPE.AIRSHIP            = 7;
+    MAV_TYPE.FREE_BALLOON       = 8;
+    MAV_TYPE.ROCKET             = 9;
+    MAV_TYPE.GROUND_ROVER       = 10;
+    MAV_TYPE.SURFACE_BOAT       = 11;
+    MAV_TYPE.SUBMARINE          = 12;
+    MAV_TYPE.HEXAROTOR          = 13;
+    MAV_TYPE.OCTOROTOR          = 14;
+    MAV_TYPE.TRICOPTER          = 15;
+    MAV_TYPE.FLAPPING_WING      = 16;
+    MAV_TYPE.KITE               = 17;
+    MAV_TYPE.ONBOARD_CONTROLLER = 18;
+    MAV_TYPE.VTOL_DUOROTOR      = 19;
+    MAV_TYPE.VTOL_QUADROTOR     = 20;
+    MAV_TYPE.VTOL_TILTROTOR     = 21;
+    MAV_TYPE.VTOL_RESERVED2     = 22;
+    MAV_TYPE.VTOL_RESERVED3     = 23;
+    MAV_TYPE.VTOL_RESERVED4     = 24;
+    MAV_TYPE.VTOL_RESERVED5     = 25;
+    MAV_TYPE.GIMBAL             = 26;
+    MAV_TYPE.ADSB               = 27;
 end

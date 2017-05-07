@@ -60,9 +60,23 @@ else
     right = [];
 end
 
-if dataname(1) == '.'
+if strncmp(dataname, '.time', 5)
+    % '.time'
     data = (log.time - log.time(1)) / 1000^2;
     time = data;
+elseif strncmp(dataname, '.parm.', 6)
+    % '.parm.XXXX'
+    
+    name = dataname(7:end);
+    
+    if ~isempty(name) && isfield(log.parm, name)
+        data = log.parm.(name);
+        time = [];
+    else
+        data = [];
+        time = [];
+    end
+    
 elseif isempty(right) && isfield(log.log, left)
     % 'XXXX' format
     % returns the "data" from the struct log.log.XXXX excluding time
