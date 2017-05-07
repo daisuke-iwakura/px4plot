@@ -2,6 +2,8 @@
 %
 % -- px4plot(FILEPATH)
 % -- px4plot(FILEPATH, '|XXXs')
+% -- px4plot(FILEPATH, 'XXXs:YYYs')
+% -- px4plot(FILEPATH, 'start+XXXs:end-YYYs')
 %     Plot of .px4log binary file logged by px4 autopilot.
 %
 %     Example :
@@ -14,6 +16,12 @@
 %
 %       px4plot('01_02_03.px4log', '|20s', '|30s')
 %     => Multiple vertical line definition allowed.
+%
+%       px4plot('01_02_03.px4log', '10s:30s')
+%     => Change a range of time-axis to [10 30] in second.
+%
+%       px4plot('01_02_03.px4log', 'start+10s:end-30s')
+%     => Change a range of time-axis based on start and end point.
 %
 %     Copyright (c) 2017, Daisuke Iwakura
 %     All rights reserved.
@@ -60,8 +68,17 @@ MAV_TYPE = mavtypes();
 
 % Time
 time = getLogData(log, '.time');
-param.x_range = [time(1) time(end)];
-
+if ~isempty(param.t_end)
+    param.t_range(2) = param.t_end;
+else    
+    param.t_range(2) = time(end) - param.t_end_from;
+end
+if ~isempty(param.t_start)
+    param.t_range(1) = param.t_start;
+else
+    param.t_range(1) = time(1) + param.t_start_from;
+end
+    
 % ATTITUDE
 [ATT t_ATT] = getLogData(log, 'ATT');
 ATT.Roll  = ATT.Roll  * 180 / pi;
@@ -202,13 +219,19 @@ figtool(param, 'Altitude [m]');
 clear h1 h2 h3 h4 h5
 
 % 3D Position
+idx_LPOS_start = findindex(t_LPOS, param.t_range(1));
+idx_LPOS_end   = findindex(t_LPOS, param.t_range(2));
 figure('Name', '3D Position', 'NumberTitle', 'off');
 hold on
-plot3(LPOS.Y, LPOS.X, -LPOS.Z);
+plot3( LPOS.Y(idx_LPOS_start:idx_LPOS_end), ...
+       LPOS.X(idx_LPOS_start:idx_LPOS_end), ...
+      -LPOS.Z(idx_LPOS_start:idx_LPOS_end));
 h1 = [];
 idx_LPOS_Land = findindex(t_LPOS, t_LAND);
 for i = 1 : length(idx_LPOS_Land)
-    if idx_LPOS_Land(i) >= 2
+    if idx_LPOS_Land(i) >= 2 && ...
+       idx_LPOS_start <= idx_LPOS_Land(i) && ...
+       idx_LPOS_Land(i) <= idx_LPOS_end
         h1 = plot3(LPOS.Y(idx_LPOS_Land(i)), ...
                    LPOS.X(idx_LPOS_Land(i)), ...
                    -LPOS.Z(idx_LPOS_Land(i)), '*r');
@@ -375,7 +398,11 @@ end % end of function
 
 function param = parse_arg(varargin)
 
-    param.time_marked = [];
+    param.time_marked  = [];
+    param.t_start      = [];
+    param.t_start_from = 0;
+    param.t_end        = [];
+    param.t_end_from   = 0;
 
     for i = 1 : length(varargin)
         arg = varargin{i};
@@ -383,6 +410,37 @@ function param = parse_arg(varargin)
             % '|XXXs'
             
             param.time_marked(end+1) = str2double(arg(2:end-1));
+        elseif ischar(arg) && ~isempty(strfind(arg, ':'))
+            % 'XXXs:YYYs'
+            % 'start:end'
+            % 'start+AAAs:end-BBBs'
+            
+            n = strfind(arg, ':');
+            
+            left  = arg(1:n-1);
+            right = arg(n+1:end);
+            
+            if strncmp(left, 'start+', 6) && left(end) == 's'
+                param.t_start      = [];
+                param.t_start_from = str2double(left(7:end-1));
+            elseif strcmp(left, 'start') == 1
+                param.t_start      = [];
+                param.t_start_from = 0;
+            elseif left(end) == 's'
+                param.t_start      = str2double(left(1:end-1));
+                param.t_start_from = [];
+            end
+            
+            if strncmp(right, 'end-', 4) == 1 && right(end) == 's'
+                param.t_end      = [];
+                param.t_end_from = str2double(right(5:end-1));
+            elseif strcmp(right, 'end') == 1
+                param.t_end      = [];
+                param.t_end_from = 0;
+            elseif right(end) == 's'
+                param.t_end      = str2double(right(1:end-1));
+                param.t_end_from = [];
+            end
         end
     end
 end
@@ -390,7 +448,7 @@ end
 
 
 function figtool(param, label_y)
-    xlim(param.x_range);
+    xlim(param.t_range);
     xlabel('Time [s]');
     ylabel(label_y);
 
