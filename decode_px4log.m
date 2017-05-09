@@ -34,11 +34,13 @@
 function result = decode_px4log(filepath)
 
 % define first for better performance
-temp(1).count    = [];
-temp(1).len_body = [];
 temp(1).time     = [];
 temp(1).buff     = [];
 temp(1:127) = temp(1);
+% don't use struct to keep performance
+temp_count(1:127)    = 0; % number of messages stored in buffer
+temp_len_body(1:127) = 0; % length of message excluding header
+temp_size(1:127)     = 0; % size of buffer
 
 ALLOC_UNIT = 256; % size of block allocation
 
@@ -105,16 +107,18 @@ while i <= i_end
             % business-level messages, ID < 0x80
             
             % make 2D array for vector processing
-            count = temp(msg_type).count + 1;
-            temp(msg_type).count = count;
+            count = temp_count(msg_type) + 1;
+            temp_count(msg_type) = count;
             temp(msg_type).time(count) = time_cur;
-            temp(msg_type).buff(count,:) = buff(i:i+temp(msg_type).len_body-1);
-            i = i + temp(msg_type).len_body;
+            i_next = i + temp_len_body(msg_type);
+            temp(msg_type).buff(count,:) = buff(i:i_next - 1);
+            i = i_next;
             
             % block reallocation
-            if mod(count, ALLOC_UNIT) == 0
+            if count == temp_size(msg_type)
                 temp(msg_type).time(count+ALLOC_UNIT) = 0;
                 temp(msg_type).buff(count+ALLOC_UNIT,:) = 0;
+                temp_size(msg_type) = count + ALLOC_UNIT;
             end
             
         elseif msg_type == LOG_TIME_MSG
@@ -146,10 +150,11 @@ while i <= i_end
             i = i + LOG_FORMAT_MSG_LEN;
             
             % initial allocation
-            temp(fm.type).count = 0;
-            temp(fm.type).len_body = fm.length - LOG_PACKET_HEADER_LEN;
+            temp_count(fm.type) = 0;
+            temp_size(fm.type) = ALLOC_UNIT;
+            temp_len_body(fm.type) = fm.length - LOG_PACKET_HEADER_LEN;
             temp(fm.type).time = zeros(ALLOC_UNIT, 1);
-            temp(fm.type).buff = uint8(zeros(ALLOC_UNIT, temp(fm.type).len_body));
+            temp(fm.type).buff = uint8(zeros(ALLOC_UNIT, temp_len_body(fm.type)));
             
         elseif msg_type == LOG_VER_MSG
             ver = decode_ver(buff, i);
@@ -166,9 +171,9 @@ end
 
 % remove unnessesary elements
 for i = 1 : length(temp)
-    if ~isempty(temp(i).count)
-        temp(i).time = temp(i).time(1:temp(i).count);
-        temp(i).buff = temp(i).buff(1:temp(i).count,:);
+    if ~isempty(temp_count(i))
+        temp(i).time = temp(i).time(1:temp_count(i));
+        temp(i).buff = temp(i).buff(1:temp_count(i),:);
     end
 end
 
