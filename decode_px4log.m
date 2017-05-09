@@ -146,15 +146,18 @@ while i <= i_end
         elseif msg_type == LOG_FORMAT_MSG
             fm = decode_format(buff, i);
             fm.parser = fmt2parser(fm);
-            fmt(fm.type) = fm;
             i = i + LOG_FORMAT_MSG_LEN;
             
-            % initial allocation
-            temp_count(fm.type) = 0;
-            temp_size(fm.type) = ALLOC_UNIT;
-            temp_len_body(fm.type) = fm.length - LOG_PACKET_HEADER_LEN;
-            temp(fm.type).time = zeros(ALLOC_UNIT, 1);
-            temp(fm.type).buff = uint8(zeros(ALLOC_UNIT, temp_len_body(fm.type)));
+            if fm.type < 128
+                fmt(fm.type) = fm;
+
+                % initial allocation
+                temp_count(fm.type) = 0;
+                temp_size(fm.type) = ALLOC_UNIT;
+                temp_len_body(fm.type) = fm.length - LOG_PACKET_HEADER_LEN;
+                temp(fm.type).time = zeros(ALLOC_UNIT, 1);
+                temp(fm.type).buff = uint8(zeros(ALLOC_UNIT, temp_len_body(fm.type)));
+            end
             
         elseif msg_type == LOG_VER_MSG
             ver = decode_ver(buff, i);
@@ -171,7 +174,7 @@ end
 
 % remove unnessesary elements
 for i = 1 : length(temp)
-    if ~isempty(temp_count(i))
+    if temp_count(i) > 0
         temp(i).time = temp(i).time(1:temp_count(i));
         temp(i).buff = temp(i).buff(1:temp_count(i),:);
     end
@@ -189,7 +192,7 @@ end
 % vector processing
 
 for i = 1 : length(temp)
-    if ~isempty(temp(i).time)
+    if temp_count(i) > 0
         k = 1;
         for j = 1 : length(fmt(i).parser)
             [data, k] = fmt(i).parser(j).func(temp(i).buff, k);
