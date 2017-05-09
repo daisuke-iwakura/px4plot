@@ -233,7 +233,7 @@ function ret = decode_ver(buff, offset)
 end
 
 function ret = decode_parm(buff, offset)
-    ret.name  = char(buff(offset:offset+15));
+    ret.name  = deblank(char(buff(offset:offset+15)));
     ret.value = double(typecast(buff(offset+16:offset+19), 'single'));
 end
 
