@@ -33,16 +33,15 @@
 
 function result = decode_px4log(filepath)
 
+ALLOC_UNIT = 512; % size of block allocation
+
 % define first for better performance
-temp(1).time     = [];
-temp(1).buff     = [];
-temp(1:127) = temp(1);
+temp_time   = zeros(ALLOC_UNIT, 127);
+temp_offset = zeros(ALLOC_UNIT, 127);
 % don't use struct to keep performance
 temp_count(1:127)    = 0; % number of messages stored in buffer
 temp_len_body(1:127) = 0; % length of message excluding header
-temp_size(1:127)     = 0; % size of buffer
-
-ALLOC_UNIT = 256; % size of block allocation
+temp_size   = ALLOC_UNIT;
 
 LOG_PACKET_HEADER_LEN = 3;
 
@@ -59,7 +58,7 @@ LOG_VER_MSG_LEN    = 80;
 LOG_PARM_MSG_LEN   = 20;
 
 % performance check
-perf_check = false;
+perf_check = true;
 
 if perf_check
     disp('---Start---');
@@ -109,16 +108,15 @@ while i <= i_end
             % make 2D array for vector processing
             count = temp_count(msg_type) + 1;
             temp_count(msg_type) = count;
-            temp(msg_type).time(count) = time_cur;
-            i_next = i + temp_len_body(msg_type);
-            temp(msg_type).buff(count,:) = buff(i:i_next - 1);
-            i = i_next;
+            temp_time(count, msg_type) = time_cur;
+            temp_offset(count, msg_type) = i;
+            i = i + temp_len_body(msg_type);
             
             % block reallocation
-            if count == temp_size(msg_type)
-                temp(msg_type).time(count+ALLOC_UNIT) = 0;
-                temp(msg_type).buff(count+ALLOC_UNIT,:) = 0;
-                temp_size(msg_type) = count + ALLOC_UNIT;
+            if count == temp_size
+                temp_size = count + ALLOC_UNIT;
+                temp_time(temp_size, 1) = 0;
+                temp_offset(temp_size, 1) = 0;
             end
             
         elseif msg_type == LOG_TIME_MSG
@@ -151,12 +149,9 @@ while i <= i_end
             if fm.type < 128
                 fmt(fm.type) = fm;
 
-                % initial allocation
+                % initialize
                 temp_count(fm.type) = 0;
-                temp_size(fm.type) = ALLOC_UNIT;
                 temp_len_body(fm.type) = fm.length - LOG_PACKET_HEADER_LEN;
-                temp(fm.type).time = zeros(ALLOC_UNIT, 1);
-                temp(fm.type).buff = uint8(zeros(ALLOC_UNIT, temp_len_body(fm.type)));
             end
             
         elseif msg_type == LOG_VER_MSG
@@ -172,14 +167,6 @@ while i <= i_end
     end
 end
 
-% remove unnessesary elements
-for i = 1 : length(temp)
-    if temp_count(i) > 0
-        temp(i).time = temp(i).time(1:temp_count(i));
-        temp(i).buff = temp(i).buff(1:temp_count(i),:);
-    end
-end
-
 time = time(1:time_count);
 
 if perf_check
@@ -191,12 +178,23 @@ end
 %%
 % vector processing
 
-for i = 1 : length(temp)
+for i = 1 : 127
     if temp_count(i) > 0
         k = 1;
+        
+        % For extracting data, make index table first
+        extracter = repmat(0:temp_len_body(i)-1, temp_count(i), 1) ...
+                  + repmat(temp_offset(1:temp_count(i),i), 1, temp_len_body(i));
+        
+        if temp_len_body(i) == 1
+            temp_buff = buff(extracter)';
+        else
+            temp_buff = buff(extracter);
+        end
+        
         for j = 1 : length(fmt(i).parser)
-            [data, k] = fmt(i).parser(j).func(temp(i).buff, k);
-            result.log.(fmt(i).name).(fmt(i).parser(j).label) = [temp(i).time data];
+            [data, k] = fmt(i).parser(j).func(temp_buff, k);
+            result.log.(fmt(i).name).(fmt(i).parser(j).label) = [temp_time(1:temp_count(i),i) data];
         end
     end
 end
